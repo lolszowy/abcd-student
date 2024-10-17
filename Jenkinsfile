@@ -23,30 +23,46 @@ pipeline {
                 '''
             }
         }
-        stage('ZAP Passive Scan') {
-            agent {
-                docker {
-                    image "ghcr.io/zaproxy/zaproxy:stable"
-                    args "--name zap --add-host=host.docker.internal:host-gateway"
-                }
-            }
+        stage('[ZAP] Baseline passive-scan') {
             steps {
-                echo 'ZAP Passive Scan'
-                sh 'mkdir -p /zap/wrk/reports/'
-                sh 'zap.sh -cmd -addonupdate'
-                sh 'zap.sh -cmd -addoninstall communityScripts -addoninstall pscanrulesAlpha -addoninstall pscanrulesBeta -autorun ${WORKSPACE}/plan-testow-zap/passive_scan.yaml'
+                sh 'mkdir -p ${WORKSPACE}/results/'
+                sh '''
+                pwd
+                ls -la
+                docker run --name zap \
+                    --add-host=host.docker.internal:host-gateway \
+                    -v /home/lolszowy/git/abcd/abcd-student/plan-testow-zap/:/zap/wrk/:rw \
+                    -t ghcr.io/zaproxy/zaproxy:stable bash -c \
+                    "mkdir /zap/wrk/reports; zap.sh -cmd -addonupdate; zap.sh -cmd -addoninstall communityScripts -addoninstall pscanrulesAlpha -addoninstall pscanrulesBeta -autorun /zap/wrk/passive_scan.yaml" 
+                '''
             }
         }
     }
     post {
-        always {
-            sh '''
-            mkdir ${WORKSPACE}/reports/
-            docker cp zap:/zap/wrk/reports/zap_html_report.html ${WORKSPACE}/reports/zap_html_report.html || true
-            docker cp zap:/zap/wrk/reports/zap_xml_report.xml ${WORKSPACE}/reports/zap_xml_report.xml || true
-            docker stop juice-shop || true
-            docker rm juice-shop || true              
+        success {
+            sh '''            
+            docker cp zap:/zap/wrk/reports/zap_html_report.html ${WORKSPACE}/results/zap_html_report.html
+            docker cp zap:/zap/wrk/reports/zap_xml_report.xml ${WORKSPACE}/results/zap_xml_report.xml
             '''
+            archiveArtifacts artifacts: "results/zap_html_report.html", allowEmptyArchive: true
+            defectDojoPublisher(artifact: '${WORKSPACE}/results/zap_xml_report.xml',
+                productName: 'Juice Shop',
+                scanType: 'ZAP Scan',
+                engagementName: 'lolszowy@gmail.com'
+            )
+            sh '''
+            docker stop zap juice-shop || true
+            docker rm zap juice-shop || true
+            '''   
+        }
+        failure {            
+            sh '''
+            docker stop zap juice-shop || true
+            docker rm zap juice-shop || true
+            '''            
         }
     }
 }
+// OSV Scan
+// Semgrep JSON Report
+// Trufflehog Scan
