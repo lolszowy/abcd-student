@@ -1,0 +1,39 @@
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout(true)
+        timestamps()
+        ansiColor("xterm")
+    }
+    stages {
+        stage('Code checkout from GitHub') {
+            steps {
+                script {
+                    //cleanWs()
+                    git credentialsId: 'GitHub_PAT', url: 'https://github.com/lolszowy/abcd-student.git', branch: 'main'
+                }
+            }
+        }
+        stage('TruffleHog scan') {
+            steps {
+                sh 'mkdir -p results'
+                sh 'trufflehog git file://. -j > results/trufflehog-result.json'
+                sh 'cat results/trufflehog-result.json'
+            }
+        }
+    }
+    post {
+        success {
+            echo 'success'
+            archiveArtifacts artifacts: "results/trufflehog-result.json", allowEmptyArchive: true
+            defectDojoPublisher(artifact: 'results/trufflehog-result.json', 
+                    productName: 'Juice Shop', 
+                    scanType: 'Trufflehog Scan', 
+                engagementName: 'lolszowy@gmail.com'
+            )
+        }
+    }
+}
+// OSV Scan
+// Semgrep JSON Report
+// Trufflehog Scan
